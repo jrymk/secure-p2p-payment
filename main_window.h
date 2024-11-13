@@ -115,6 +115,7 @@ public:
         Window::on_show();
         updateUserStatus();
         updateOnlineUsers();
+        show_all_children();
 
         clientAction.statusUpdatedCallback = [this]() {
             updateUserStatus();

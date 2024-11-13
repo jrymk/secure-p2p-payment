@@ -13,6 +13,7 @@
 #include <sys/time.h>
 #include <cerrno>
 #include <string>
+#include <random>
 
 // a custom simple socket class to consolidate the socket code
 // heavily inspired by Beej's Guide to Network Programming
@@ -172,7 +173,13 @@ public:
         struct sockaddr_in addr;
         addr.sin_family = AF_INET;
         addr.sin_addr.s_addr = INADDR_ANY;
-        for (int port = 1024; port <= 65535; port++) {
+
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<> dis(1024, 65535);
+
+        for (int tries = 0; tries < 10000; tries++) { // if it fails 10000 times, I think it deserves to fail
+            int port = dis(gen);
             addr.sin_port = htons(port);
             if (::bind(tempSockFd, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
                 ::close(tempSockFd);

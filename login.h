@@ -192,15 +192,18 @@ private:
             
             clientAction.loggedIn = true;
 
-            // save the username and port to ~/.config/p2ppayment/client.conf
-            std::ofstream configFile;
+            if (rememberMe.get_active()) {
+                // save the username and port to ~/.config/p2ppayment/client.conf
+                std::ofstream configFile;
 
-            // create the directory if it doesn't exist
-            // Glib::file_set_contents(get_user_config_dir() + "/p2ppayment/client.conf", "");
-            
-            configFile.open("./client.conf");
-            configFile << username << "\n" << clientPort;
-            configFile.close();
+                // create the directory if it doesn't exist
+                // Glib::file_set_contents(get_user_config_dir() + "/p2ppayment/client.conf", "");
+
+                configFile.open("./client.conf");
+                configFile << username << "\n"
+                           << clientPort;
+                configFile.close();
+            }
 
             hide();
             
