@@ -122,35 +122,28 @@ public:
             transferResultTimeout = 10;
             clientAction.transferOk = false;
 
-            signal_timeout().connect(sigc::mem_fun(*this, &PayWindow::checkTransferResult), 500);
+            signal_timeout().connect_once(sigc::mem_fun(*this, &PayWindow::checkTransferResult), 250);
+            // we actually don't need to wait. we just do this to show the user that the payment is being processed
         }
     }
 
-    bool checkTransferResult() {
-        if (transferResultTimeout <= 0) {
-            payButton.get_style_context()->remove_class("warning");
-            payButton.get_style_context()->add_class("error");
-            payButton.set_label("Payment failed");
-
-            MessageDialog dialog(*this, "Transfer verification failed", false, MessageType::MESSAGE_ERROR, ButtonsType::BUTTONS_OK, true);
-            dialog.set_secondary_text("Verify micropayment transaction timed out. Check your balance a while later to see if the payment went through before trying again.");
-            dialog.run();
-            return false; // stop the loop
-        }
-        clientAction.fetchServerInfo();
-
-        if (clientAction.transferOk) {
+    void checkTransferResult() {
+        if (clientAction.verifyMicropaymentTransaction()) {
             payButton.get_style_context()->remove_class("warning");
             payButton.get_style_context()->add_class("success");
             payButton.set_label("Payment successful!");
 
             clientAction.transferOk = false;
+        } else {
+            payButton.get_style_context()->remove_class("success");
+            payButton.get_style_context()->add_class("error");
+            payButton.set_label("Payment failed");
 
-            return false; // stop the loop
+            MessageDialog dialog(*this, "Transfer verification failed", false, MessageType::MESSAGE_ERROR, ButtonsType::BUTTONS_OK, true);
+            dialog.set_secondary_text("Verify micropayment transaction failed. Check your balance a while later to see if the payment went through before trying again.\n" + clientAction.error_t);
+
+            dialog.run();
         }
-
-        transferResultTimeout--;
-        return true;
     }
 
     void on_payeeUsernameEntry_changed() {

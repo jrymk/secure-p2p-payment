@@ -34,6 +34,8 @@ public:
     std::function<void()> statusUpdatedCallback;
     std::function<void()> sessionEndedCallback;
 
+    bool waitingForRecv = false;
+
     // p2p
     MySocket p2pListenSocket;
 
@@ -158,7 +160,7 @@ public:
             }
 
             for (const auto &line : lines)
-                if (line == "Transfr OK!")
+                if (line == "Transfer OK!")
                     transferOk = true;
 
             if (lines.size() < 4) {
@@ -191,6 +193,11 @@ public:
     bool fetchServerInfo() {
         if (!clientSocket.isConnected) {
             error_t = "Not connected to server";
+            return false;
+        }
+        // don't let the List request interfere with Transfer OK! response, etc.
+        if (waitingForRecv) {
+            std::cerr << "Waiting for Transfer OK! receive/timeout" << std::endl;
             return false;
         }
         clientSocket.send("List");
@@ -237,10 +244,22 @@ public:
 
         transferOk = false;
 
+        waitingForRecv = true;
         p2pSendSocket.send(username + "#" + std::to_string(amount) + "#" + payeeUsername);
         std::cerr << "Sent micropayment transaction to " << payeeUsername << std::endl;
 
         return true;
+    }
+
+    bool verifyMicropaymentTransaction() {
+        std::string response = clientSocket.recv(5);
+        waitingForRecv = false;
+        if (response == "Transfer OK!\n") {
+            transferOk = true;
+            return true;
+        }
+        error_t = "Server response: " + response;
+        return false;
     }
 
     void logOut() {

@@ -1,5 +1,7 @@
 install-deps:
-	sudo apt-get install libgtkmm-3.0-dev
+	sudo apt-get update
+	sudo apt-get install gcc build-essential -y
+	sudo apt-get install libgtkmm-3.0-dev -y
 server-run:
 	./build/demo_server 5051 -a
 client:

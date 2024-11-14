@@ -75,9 +75,13 @@ public:
         mono.set_family("monospace");
 
         userStatusGrid.attach(serverAddressLabel, 2, 0, 3, 1);
-        serverAddressLabel.set_text("No data");
+        serverAddressLabel.set_text("Disconnected");
         serverAddressLabel.set_halign(Align::ALIGN_END);
         serverAddressLabel.override_font(mono);
+
+        Label *dummy = manage(new Label());
+        userStatusGrid.attach(*dummy, 2, 1, 1, 1);
+        dummy->set_hexpand(true);
 
         userStatusGrid.attach(serverDetailsButton, 3, 1, 1, 1);
         serverDetailsButton.set_label("Details");
@@ -135,7 +139,7 @@ public:
             updateAll();
 
             MessageDialog dialog(*this, "Session ended", false, MessageType::MESSAGE_ERROR, ButtonsType::BUTTONS_OK, true);
-            dialog.set_secondary_text("Server has ended your session. Please log in again");
+            dialog.set_secondary_text("Server has ended your session.\nPlease log in again.");
             dialog.run();
             logOut();
         };
