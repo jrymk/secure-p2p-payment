@@ -30,6 +30,12 @@ public:
 
         payeeUsernameEntry.set_placeholder_text("Payee username");
         payeeUsernameEntry.signal_changed().connect(sigc::mem_fun(*this, &PayWindow::on_payeeUsernameEntry_changed));
+        payeeUsernameEntry.signal_activate().connect([this]() {
+            if (payeeUsernameEntry.get_style_context()->has_class("error"))
+                payeeUsernameEntry.grab_focus();
+            else
+                amountEntry.grab_focus();
+        });
         payeeUsernameEntry.set_text(payeeUsername);
         grid.attach(payeeUsernameEntry, 1, 0, 1, 1);
 
@@ -39,6 +45,14 @@ public:
 
         amountEntry.set_placeholder_text("Amount");
         amountEntry.signal_changed().connect(sigc::mem_fun(*this, &PayWindow::on_amountEntry_changed));
+        amountEntry.signal_activate().connect([this]() {
+            if (amountEntry.get_text().empty())
+                amountEntry.grab_focus();
+            else if (payeeUsernameEntry.get_style_context()->has_class("error"))
+                payeeUsernameEntry.grab_focus();
+            else if (payButton.get_sensitive())
+                on_payButton_clicked();
+        });
         grid.attach(amountEntry, 1, 1, 1, 1);
 
         payButton.set_label("Pay");
@@ -96,14 +110,47 @@ public:
         }
 
         MessageDialog dialog(*this, "Confirm payment", false, MessageType::MESSAGE_QUESTION, ButtonsType::BUTTONS_OK, true);
-        dialog.set_secondary_text("Are you sure you want to send " + amountEntry.get_text() + " to " + payeeUsernameEntry.get_text() + "?\nThis action cannot be undone.");
+        dialog.set_secondary_text("Are you sure you want to send " + std::to_string(amount) + " to " + payeeUsernameEntry.get_text() + "?\nThis action cannot be undone.");
         int result = dialog.run();
         if (result == RESPONSE_OK && (clientAction.sendMicropaymentTransaction(amount, payeeUsername))) {
             amountEntry.set_text("");
             payButton.get_style_context()->remove_class("suggested-action");
-            payButton.get_style_context()->add_class("success");
-            payButton.set_label("Payment sent!");
+            payButton.get_style_context()->add_class("warning");
+            payButton.set_label("Verifying transfer...");
+            payButton.set_sensitive(false);
+
+            transferResultTimeout = 10;
+            clientAction.transferOk = false;
+
+            signal_timeout().connect(sigc::mem_fun(*this, &PayWindow::checkTransferResult), 500);
         }
+    }
+
+    bool checkTransferResult() {
+        if (transferResultTimeout <= 0) {
+            payButton.get_style_context()->remove_class("warning");
+            payButton.get_style_context()->add_class("error");
+            payButton.set_label("Payment failed");
+
+            MessageDialog dialog(*this, "Transfer verification failed", false, MessageType::MESSAGE_ERROR, ButtonsType::BUTTONS_OK, true);
+            dialog.set_secondary_text("Verify micropayment transaction timed out. Check your balance a while later to see if the payment went through before trying again.");
+            dialog.run();
+            return false; // stop the loop
+        }
+        clientAction.fetchServerInfo();
+
+        if (clientAction.transferOk) {
+            payButton.get_style_context()->remove_class("warning");
+            payButton.get_style_context()->add_class("success");
+            payButton.set_label("Payment successful!");
+
+            clientAction.transferOk = false;
+
+            return false; // stop the loop
+        }
+
+        transferResultTimeout--;
+        return true;
     }
 
     void on_payeeUsernameEntry_changed() {
@@ -126,6 +173,12 @@ public:
             }
             payeeUsernameEntry.get_style_context()->add_class("error");
         }
+
+        if (amountEntry.get_style_context()->has_class("error") || payeeUsernameEntry.get_style_context()->has_class("error")) {
+            payButton.set_sensitive(false);
+        } else {
+            payButton.set_sensitive(true);
+        }
     }
 
     void on_amountEntry_changed() {
@@ -143,6 +196,7 @@ public:
                 amountEntry.get_style_context()->add_class("error");
             } else if (std::stoi(amount) > clientAction.accountBalance) {
                 amountEntry.get_style_context()->add_class("warning");
+                amountEntry.get_style_context()->remove_class("error");
             } else {
                 amountEntry.get_style_context()->remove_class("error");
                 amountEntry.get_style_context()->remove_class("warning");
@@ -150,6 +204,12 @@ public:
         } catch (const std::exception &) {
             amountEntry.get_style_context()->add_class("error");
             std::cerr << "Failed to convert payment amount to a number" << std::endl;
+        }
+
+        if (amountEntry.get_style_context()->has_class("error") || payeeUsernameEntry.get_style_context()->has_class("error")) {
+            payButton.set_sensitive(false);
+        } else {
+            payButton.set_sensitive(true);
         }
     }
 
@@ -161,6 +221,8 @@ private:
     Entry amountEntry;
 
     Button payButton;
+
+    int transferResultTimeout = 10; // 5 seconds, 0.5s poll interval
 };
 
 #endif // PAY_H

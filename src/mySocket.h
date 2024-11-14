@@ -10,6 +10,7 @@
 #include <cstring>
 #include <iostream>
 #include <sys/select.h>
+#include <fcntl.h>
 #include <sys/time.h>
 #include <cerrno>
 #include <string>
@@ -44,7 +45,7 @@ public:
         return portNum;
     }
 
-    bool connect(const std::string &hostname, const std::string &serverPort) {
+    bool connect(const std::string &hostname, const std::string &serverPort, int timeout = 5) {
         if (isConnected) {
             error_t = "Already connected to server";
             return false;
@@ -74,16 +75,52 @@ public:
             return false;
         }
 
-        if (::connect(sockfd, server_info->ai_addr, server_info->ai_addrlen) == -1) {
+        // Set socket to non-blocking
+        int flags = fcntl(sockfd, F_GETFL, 0);
+        fcntl(sockfd, F_SETFL, flags | SOCK_NONBLOCK);
+
+        int result = ::connect(sockfd, server_info->ai_addr, server_info->ai_addrlen);
+        if (result == -1 && errno != EINPROGRESS) {
             error_t = strerror(errno);
             std::cerr << "Failed to connect to " << hostname << ":" << serverPort << std::endl;
             return false;
         }
-        std::cerr << "Connected to " << hostname << ":" << serverPort << std::endl;
+
+        fd_set writefds;
+        FD_ZERO(&writefds);
+        FD_SET(sockfd, &writefds);
+
+        struct timeval tv;
+        tv.tv_sec = timeout;
+        tv.tv_usec = 0;
+
+        result = select(sockfd + 1, NULL, &writefds, NULL, &tv);
+        if (result == -1) {
+            error_t = strerror(errno);
+            std::cerr << "Select error" << std::endl;
+            return false;
+        } else if (result == 0) {
+            error_t = "Connection timed out";
+            std::cerr << "Connection timed out" << std::endl;
+            return false;
+        }
+
+        int so_error;
+        socklen_t len = sizeof so_error;
+        getsockopt(sockfd, SOL_SOCKET, SO_ERROR, &so_error, &len);
+        if (so_error != 0) {
+            error_t = strerror(so_error);
+            std::cerr << "Connection failed: " << error_t << std::endl;
+            return false;
+        }
+
+        // Set socket back to blocking mode
+        fcntl(sockfd, F_SETFL, flags);
 
         freeaddrinfo(res);
         this->sockfd = sockfd;
         isConnected = true;
+        std::cerr << "Connected to " << hostname << ":" << serverPort << std::endl;
         std::cerr << "OK" << std::endl;
         return true;
     }
@@ -201,7 +238,7 @@ public:
         return true;
     }
 
-    std::string recv(int timeout_sec) {
+    std::string recv(int timeout_sec = 5) {
         std::cerr << "SOCK " << socketNameForDebug << " receiving" << std::endl;
         char buf[1024];
         fd_set readfds;
@@ -238,14 +275,19 @@ public:
         return buf;
     }
 
-    ~MySocket() {
+    void closeConnection() {
         std::cerr << "SOCK " << " Closing " << socketNameForDebug << " socket" << std::endl;
         // close tcp connection
         if (isConnected) {
             ::shutdown(sockfd, SHUT_RDWR); // Gracefully shut down the connection
             ::close(sockfd);
+            isConnected = false;
         }
         std::cerr << "Connection closed gracefully" << std::endl;
+    }
+
+    ~MySocket() {
+        closeConnection();
     }
 };
 

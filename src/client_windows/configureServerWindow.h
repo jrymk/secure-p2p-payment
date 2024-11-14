@@ -10,7 +10,7 @@ using namespace Gtk;
 class ConfigureServerWindow : public Window {
 public:
     std::string serverAddress = "localhost";
-    std::string port = "5050";
+    std::string port = "5051";
 
     ConfigureServerWindow() {
         set_title("Configure Server");
@@ -141,14 +141,22 @@ private:
             testConnectionButton.set_label("Connection successful");
         } else {
             testConnectionButton.get_style_context()->add_class("connection_fail");
-            testConnectionButton.set_label("Fail: " + testConnection.error_t);
+            testConnectionButton.set_label("Fail");
+            MessageDialog dialog(*this, "Connection failed", false, MessageType::MESSAGE_ERROR, ButtonsType::BUTTONS_OK, true);
+            dialog.set_secondary_text(testConnection.error_t);
+            dialog.run();
         }
     }
 
     void on_saveButton_clicked() {
-        // Handle save button click
         serverAddress = serverAddressEntry.get_text();
         port = portEntry.get_text();
+
+        clientAction.clientConfig.read();
+        clientAction.clientConfig.serverAddress = serverAddress;
+        clientAction.clientConfig.serverPort = port;
+        clientAction.clientConfig.write(true);
+
         // Save the server address and port
         std::cout << "Server Address: " << serverAddress << std::endl;
         std::cout << "Port: " << port << std::endl;

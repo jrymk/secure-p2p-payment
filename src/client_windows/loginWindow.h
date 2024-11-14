@@ -9,7 +9,6 @@
 #include "registerWindow.h"
 #include <thread>
 #include <atomic>
-#include <fstream>
 
 using namespace Glib;
 using namespace Gtk;
@@ -108,23 +107,22 @@ private:
     void on_show() override {
         Window::on_show();
 
-        std::ifstream configFile("./client.conf");
-        if (configFile.is_open()) {
-            std::getline(configFile, username);
-            std::getline(configFile, clientPort);
-            configFile.close();
-        }
-        if (clientPort == "0") {
+        clientAction.clientConfig.read();
+
+        configureServerWindow.serverAddress = clientAction.clientConfig.serverAddress;
+        configureServerWindow.port = clientAction.clientConfig.serverPort;
+
+        usernameEntry.set_text(clientAction.clientConfig.username);
+        portEntry.set_text(clientAction.clientConfig.p2pPort);
+
+        rememberMe.set_active(!clientAction.clientConfig.username.empty());
+
+        if (portEntry.get_text() == "0")
             autoPort.set_active(true);
-        } else {
+        else
             autoPort.set_active(false);
-            portEntry.set_text(clientPort);
-        }
         portEntry.set_sensitive(!autoPort.get_active());
 
-        usernameEntry.set_text(username);
-        portEntry.set_text(clientPort);
-        autoPort.set_active(true);
         logInButton.set_sensitive(true);
         logInButton.set_label("Log in");
 
@@ -156,6 +154,7 @@ private:
 
     void on_logInButton_clicked() {
         on_portEntry_changed();
+
         if (usernameEntry.get_text().empty()) {
             usernameEntry.get_style_context()->add_class("error");
             MessageDialog dialog(*this, "Username cannot be empty", false, MessageType::MESSAGE_ERROR, ButtonsType::BUTTONS_OK, true);
@@ -176,6 +175,7 @@ private:
                 return;
             }
         }
+
         username = usernameEntry.get_text();
         clientPort = autoPort.get_active() ? "0" : portEntry.get_text();
         configureServerWindow.hide();
@@ -203,19 +203,14 @@ private:
             logInButton.set_sensitive(true);
             logInButton.set_label("Log in");
 
-            clientAction.loggedIn = true;
-
             if (rememberMe.get_active()) {
-                // save the username and port to ~/.config/p2ppayment/client.conf
-                std::ofstream configFile;
-
-                // create the directory if it doesn't exist
-                // Glib::file_set_contents(get_user_config_dir() + "/p2ppayment/client.conf", "");
-
-                configFile.open("./client.conf");
-                configFile << username << "\n"
-                           << clientPort;
-                configFile.close();
+                clientAction.clientConfig.username = username;
+                clientAction.clientConfig.p2pPort = clientPort;
+                clientAction.clientConfig.write(true);
+            } else {
+                clientAction.clientConfig.username = "";
+                clientAction.clientConfig.p2pPort = "";
+                clientAction.clientConfig.write(false); // next time the username and port will not be filled in
             }
 
             hide();

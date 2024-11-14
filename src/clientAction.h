@@ -2,6 +2,7 @@
 #define CLIENT_ACTION_H
 
 #include "mySocket.h"
+#include "clientConfig.h"
 #include <vector>
 #include <thread>
 #include <atomic>
@@ -21,13 +22,17 @@ public:
 
     std::string error_t;
 
+    ClientConfig clientConfig;
     bool loggedIn = false;
+
     std::string username;
     std::string p2pPort;
     int accountBalance;
     std::string serverPublicKey;
     std::vector<UserAccount> userAccounts;
+    bool transferOk = false;
     std::function<void()> statusUpdatedCallback;
+    std::function<void()> sessionEndedCallback;
 
     // p2p
     MySocket p2pListenSocket;
@@ -38,7 +43,8 @@ public:
     ClientAction() : clientSocket("client"), p2pListenSocket("p2pListen") {}
 
     bool connectToServer(const std::string &hostname, const std::string &serverPort) {
-        clientSocket.connect(hostname, serverPort);
+        // add timeout
+        clientSocket.connect(hostname, serverPort, 5);
         if (!clientSocket.isConnected)
             error_t = "Please check server configuration from the login window.\nServer address: " + hostname + "\nPort: " + serverPort + "\nError: " + clientSocket.error_t;
         if (clientSocket.isConnected) {
@@ -109,6 +115,8 @@ public:
             return false;
         }
 
+        loggedIn = true;
+
         if (!p2pListenSocket.bindSocket(this->p2pPort)) {
             error_t = "Failed to bind p2p port. Please check if the port is available on your system.\n" + p2pListenSocket.error_t;
             return false;
@@ -132,16 +140,26 @@ public:
         <userAccount1>#<userAccount1_IPaddr>#<userAccount1_portNum><CRLF>
         <userAccount2>#<userAccount2_ IPaddr>#<userAccount2_portNum><CRLF>
         */
-
-        userAccounts.clear();
+        std::cerr << "Parsing online users" << std::endl;
 
         try {
             std::vector<std::string> lines;
             std::string line;
             std::istringstream responseStream(response);
-            while (std::getline(responseStream, line)) {
+            while (std::getline(responseStream, line))
                 lines.push_back(line);
+
+            std::cerr << "Received " << lines.size() << " lines" << std::endl;
+
+            if (lines.size() && lines[0] == "Please login first") {
+                error_t = "Not logged in or session ended by the server. Response: Please login first";
+                sessionEndedCallback();
+                return false;
             }
+
+            for (const auto &line : lines)
+                if (line == "Transfr OK!")
+                    transferOk = true;
 
             if (lines.size() < 4) {
                 error_t = "Invalid response";
@@ -153,6 +171,7 @@ public:
 
             int numAccounts = std::stoi(lines[2]);
 
+            userAccounts.clear();
             for (int i = 3; i < numAccounts + 3; i++) {
                 std::istringstream accountStream(lines[i]);
                 std::string username, ipAddr, portNum;
@@ -176,6 +195,11 @@ public:
         }
         clientSocket.send("List");
         bool parseSuccess = parseOnlineUsers(clientSocket.recv(5));
+
+        if (!parseSuccess) {
+            error_t = "Failed to fetch server info\n" + error_t;
+            std::cerr << error_t << std::endl;
+        }
 
         statusUpdatedCallback();
 
@@ -211,23 +235,28 @@ public:
             return false;
         }
 
+        transferOk = false;
+
         p2pSendSocket.send(username + "#" + std::to_string(amount) + "#" + payeeUsername);
         std::cerr << "Sent micropayment transaction to " << payeeUsername << std::endl;
 
         return true;
     }
 
-    ~ClientAction() {
-        if (p2pListening)
-            p2pStopListening();
-
+    void logOut() {
         if (clientSocket.isConnected) {
             clientSocket.send("Exit"); // send exit message to server on connection close
             std::cout << "Server replied: " << clientSocket.recv(5) << std::endl;
             std::cout << clientSocket.error_t << std::endl;
-            // if ( == "Bye\r\n")
-            //     std::cerr << "Server closed connection" << std::endl;
         }
+        loggedIn = false;
+        if (p2pListening)
+            p2pStopListening();
+        clientSocket.closeConnection();
+    }
+
+    ~ClientAction() {
+        logOut();
     }
 
     void p2pStartListening() {
@@ -277,6 +306,8 @@ public:
     }
 
     void quitApp() {
+        p2pListenSocket.closeConnection();
+
         if (p2pListening) {
             std::cerr << "Waiting for p2p listening thread to stop" << std::endl;
             p2pStopListening();
