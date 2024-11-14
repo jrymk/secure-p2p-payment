@@ -24,9 +24,9 @@ public:
     std::string socketNameForDebug = "Unknown";
     bool isConnected = false;
 
-    MySocket(const std::string& socketName) : sockfd(-1), socketNameForDebug(socketName) {}
+    MySocket(const std::string &socketName) : sockfd(-1), socketNameForDebug(socketName) {}
 
-    int checkPort(const std::string& port) {
+    int checkPort(const std::string &port) {
         if (port.empty())
             return -1;
         if (port.find_first_not_of("0123456789") != std::string::npos)
@@ -35,7 +35,7 @@ public:
         try {
             portNum = std::stoi(port);
         } catch (const std::exception &e) {
-            error_t = "Failed to convert port to a number\nException: " + std::string(e.what()); 
+            error_t = "Failed to convert port to a number\nException: " + std::string(e.what());
             return -1;
         }
         if (portNum < 1024 || portNum > 65535)
@@ -49,7 +49,7 @@ public:
             error_t = "Already connected to server";
             return false;
         }
-        std::cerr << "SOCK" << socketNameForDebug << " connecting to " << hostname << ":" << serverPort << std::endl;
+        std::cerr << "SOCK " << socketNameForDebug << " connecting to " << hostname << ":" << serverPort << std::endl;
         struct addrinfo hints, *res, *server_info;
         memset(&hints, 0, sizeof hints);
         hints.ai_family = AF_UNSPEC;
@@ -89,7 +89,7 @@ public:
     }
 
     bool bindSocket(const std::string &clientPort) {
-        std::cerr << "SOCK" << socketNameForDebug << " binding to port " << clientPort << std::endl;
+        std::cerr << "SOCK " << socketNameForDebug << " binding to port " << clientPort << std::endl;
         struct addrinfo hints, *res, *p;
         memset(&hints, 0, sizeof hints);
         hints.ai_family = AF_UNSPEC;
@@ -123,7 +123,7 @@ public:
     }
 
     bool listen(int timeout_sec = 5) {
-        std::cerr << "SOCK" << socketNameForDebug << " starting to listen for connection" << std::endl;
+        std::cerr << "SOCK " << socketNameForDebug << " starting to listen for connection" << std::endl;
         if (::listen(sockfd, 10) == -1) {
             error_t = strerror(errno);
             return false;
@@ -150,8 +150,8 @@ public:
         return true;
     }
 
-    void accept(MySocket& newSock) {
-        std::cerr << "SOCK" << socketNameForDebug << " accepting connection" << std::endl;
+    void accept(MySocket &newSock) {
+        std::cerr << "SOCK " << socketNameForDebug << " accepting connection" << std::endl;
         struct sockaddr_storage their_addr;
         socklen_t addr_size = sizeof(their_addr);
         newSock.sockfd = ::accept(sockfd, (struct sockaddr *)&their_addr, &addr_size);
@@ -163,7 +163,7 @@ public:
     }
 
     int findAvailablePort() {
-        std::cerr << "SOCK" << socketNameForDebug << " finding available port" << std::endl;
+        std::cerr << "SOCK " << socketNameForDebug << " finding available port" << std::endl;
         int tempSockFd = ::socket(AF_INET, SOCK_STREAM, 0);
         if (tempSockFd == -1) {
             error_t = strerror(errno);
@@ -192,7 +192,7 @@ public:
     }
 
     bool send(const std::string &message) {
-        std::cerr << "SOCK" << socketNameForDebug << " sending: " << message << std::endl;
+        std::cerr << "SOCK " << socketNameForDebug << " sending: " << message << std::endl;
         int sendRes = ::send(sockfd, message.c_str(), message.size(), 0);
         if (sendRes == -1) {
             error_t = strerror(errno);
@@ -202,7 +202,7 @@ public:
     }
 
     std::string recv(int timeout_sec) {
-        std::cerr << "SOCK" << socketNameForDebug << " receiving" << std::endl;
+        std::cerr << "SOCK " << socketNameForDebug << " receiving" << std::endl;
         char buf[1024];
         fd_set readfds;
         FD_ZERO(&readfds);
@@ -239,7 +239,7 @@ public:
     }
 
     ~MySocket() {
-        std::cerr << "SOCK" << " Closing " << socketNameForDebug << " socket" << std::endl;
+        std::cerr << "SOCK " << " Closing " << socketNameForDebug << " socket" << std::endl;
         // close tcp connection
         if (isConnected) {
             ::shutdown(sockfd, SHUT_RDWR); // Gracefully shut down the connection

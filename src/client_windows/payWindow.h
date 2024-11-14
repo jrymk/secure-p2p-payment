@@ -2,7 +2,7 @@
 #define PAY_H
 
 #include <gtkmm.h>
-#include "client_action.h"
+#include "../clientAction.h"
 
 using namespace Glib;
 using namespace Gtk;
@@ -69,7 +69,7 @@ public:
             return;
         }
         bool usernameExists = false;
-        for (auto& user : clientAction.userAccounts) {
+        for (auto &user : clientAction.userAccounts) {
             if (user.username == payeeUsername) {
                 usernameExists = true;
                 break;
@@ -84,7 +84,7 @@ public:
         int amount = 0;
         try {
             amount = std::stoi(amountEntry.get_text());
-        } catch (const std::exception&) {
+        } catch (const std::exception &) {
             amountEntry.get_style_context()->add_class("error");
             std::cerr << "Failed to convert payment amount to a number" << std::endl;
             return;
@@ -105,7 +105,7 @@ public:
             payButton.set_label("Payment sent!");
         }
     }
-    
+
     void on_payeeUsernameEntry_changed() {
         payButton.get_style_context()->remove_class("success");
         payButton.get_style_context()->add_class("suggested-action");
@@ -119,7 +119,7 @@ public:
             payeeUsernameEntry.get_style_context()->remove_class("error");
         }
 
-        for (auto& user : clientAction.userAccounts) {
+        for (auto &user : clientAction.userAccounts) {
             if (user.username == payeeUsername) {
                 payeeUsernameEntry.get_style_context()->remove_class("error");
                 break;
@@ -147,7 +147,7 @@ public:
                 amountEntry.get_style_context()->remove_class("error");
                 amountEntry.get_style_context()->remove_class("warning");
             }
-        } catch (const std::exception&) {
+        } catch (const std::exception &) {
             amountEntry.get_style_context()->add_class("error");
             std::cerr << "Failed to convert payment amount to a number" << std::endl;
         }
@@ -161,7 +161,6 @@ private:
     Entry amountEntry;
 
     Button payButton;
-
 };
 
 #endif // PAY_H

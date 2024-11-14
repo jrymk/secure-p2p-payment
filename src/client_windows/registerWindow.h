@@ -2,7 +2,7 @@
 #define REGISTER_H
 
 #include <gtkmm.h>
-#include "client_action.h"
+#include "../clientAction.h"
 
 using namespace Glib;
 using namespace Gtk;
@@ -34,7 +34,7 @@ public:
         registerTitle.set_halign(Align::ALIGN_START);
         grid.attach(registerTitle, 0, 0, 2, 1);
 
-        usernameHeading.set_text("Username: ");
+        usernameHeading.set_text("Username:");
         grid.attach(usernameHeading, 0, 1, 1, 1);
 
         usernameEntry.set_placeholder_text("Username");
@@ -68,13 +68,13 @@ public:
             dialog.run();
             return;
         }
-        
+
         registerButton.set_sensitive(false);
         registerButton.set_label("Registering...");
         signal_timeout().connect_once(sigc::bind(sigc::mem_fun(*this, &RegisterWindow::registerAccount), usernameEntry.get_text()), 50);
     }
 
-    void registerAccount(const std::string& username) {
+    void registerAccount(const std::string &username) {
         clientAction.connectToServer(serverAddress, port);
         if (!clientAction.clientSocket.isConnected) {
             MessageDialog dialog(*this, "Failed to connect to server", false, MessageType::MESSAGE_ERROR, ButtonsType::BUTTONS_OK, true);
@@ -95,9 +95,9 @@ public:
             dialog.set_secondary_text(clientAction.error_t);
             dialog.run();
         }
-        registerButton.set_sensitive(true); 
+        registerButton.set_sensitive(true);
         registerButton.set_label("Register");
-}
+    }
 
 private:
     Grid grid;

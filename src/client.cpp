@@ -1,14 +1,14 @@
 #include <iostream>
 #include <string>
-#include "login.h"
-#include "main_window.h"
+#include "./client_windows/loginWindow.h"
+#include "./client_windows/mainWindow.h"
 #include <gtkmm/application.h>
 
 int main(int argc, char *argv[]) {
     auto app = Gtk::Application::create(argc, argv, "uk.jerrymk.p2ppayment");
-    
+
     app->signal_startup().connect([&app]() {
-        LoginForm *loginForm = new LoginForm();
+        LoginWindow *loginForm = new LoginWindow();
         MainWindow *mainWindow = new MainWindow();
 
         mainWindow->set_transient_for(*loginForm);

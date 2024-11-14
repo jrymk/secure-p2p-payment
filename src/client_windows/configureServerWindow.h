@@ -2,7 +2,7 @@
 #define CONFIGURE_SERVER_H
 
 #include <gtkmm.h>
-#include "client_action.h"
+#include "../clientAction.h"
 
 using namespace Glib;
 using namespace Gtk;
@@ -26,7 +26,7 @@ public:
 
         add(grid);
 
-        serverAddressLabel.set_text("IP/Hostname: ");
+        serverAddressLabel.set_text("IP/Hostname:");
         grid.attach(serverAddressLabel, 0, 0, 1, 1);
 
         serverAddressEntry.set_placeholder_text("Server IP/Hostname");
@@ -37,7 +37,7 @@ public:
         });
         grid.attach(serverAddressEntry, 1, 0, 1, 1);
 
-        portLabel.set_text("Port: ");
+        portLabel.set_text("Port:");
         portLabel.set_halign(Align::ALIGN_END);
         grid.attach(portLabel, 0, 1, 1, 1);
 
@@ -57,7 +57,6 @@ public:
         saveButton.get_style_context()->add_class("suggested-action");
         saveButton.signal_clicked().connect(sigc::mem_fun(*this, &ConfigureServerWindow::on_saveButton_clicked));
         grid.attach(saveButton, 0, 3, 2, 1);
-
 
         show_all_children();
     }
@@ -104,10 +103,9 @@ private:
                 portEntry.get_style_context()->remove_class("error");
                 this->port = portEntry.get_text();
             }
-        } catch (const std::exception&) {
+        } catch (const std::exception &) {
             portEntry.get_style_context()->add_class("error");
         }
-
     }
 
     void on_testConnectionButton_clicked() {
@@ -141,8 +139,7 @@ private:
         if (connectionResult) {
             testConnectionButton.get_style_context()->add_class("connection_success");
             testConnectionButton.set_label("Connection successful");
-        }
-        else {
+        } else {
             testConnectionButton.get_style_context()->add_class("connection_fail");
             testConnectionButton.set_label("Fail: " + testConnection.error_t);
         }

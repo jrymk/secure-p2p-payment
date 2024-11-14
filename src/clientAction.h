@@ -1,7 +1,7 @@
 #ifndef CLIENT_ACTION_H
 #define CLIENT_ACTION_H
 
-#include "socket.h"
+#include "mySocket.h"
 #include <vector>
 #include <thread>
 #include <atomic>

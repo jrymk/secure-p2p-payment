@@ -2,7 +2,7 @@
 #define MAIN_WINDOW_H
 
 #include <gtkmm.h>
-#include "pay.h"
+#include "payWindow.h"
 
 using namespace Gtk;
 using namespace Glib;

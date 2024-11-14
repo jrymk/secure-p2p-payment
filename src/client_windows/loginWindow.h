@@ -5,8 +5,8 @@
 #include <iostream>
 #include <string>
 #include <cctype>
-#include "configure_server.h"
-#include "register.h"
+#include "configureServerWindow.h"
+#include "registerWindow.h"
 #include <thread>
 #include <atomic>
 #include <fstream>
@@ -14,25 +14,35 @@
 using namespace Glib;
 using namespace Gtk;
 
-class LoginForm : public Window {
+class LoginWindow : public Window {
 public:
     std::string username;
     std::string clientPort;
 
-    LoginForm() {
+    LoginWindow() {
         set_title("Secure P2P Micropayment System");
-        set_default_size(440, 230);
+        set_default_size(200, 200);
 
-        add(scrolledWindow);
-        scrolledWindow.add(fixed);
+        add(grid);
+
+        grid.set_row_spacing(10);
+        grid.set_column_spacing(10);
+        grid.set_margin_top(15);
+        grid.set_margin_bottom(15);
+        grid.set_margin_start(15);
+        grid.set_margin_end(15);
+
+        grid.attach(top, 0, 0, 4, 1);
+        top.set_column_spacing(10);
 
         signInTitle.set_text("Sign in");
         Pango::FontDescription headingFont;
         headingFont.set_size(20 * PANGO_SCALE);
         headingFont.set_weight(Pango::Weight::WEIGHT_BOLD);
         signInTitle.override_font(headingFont);
-        fixed.add(signInTitle);
-        fixed.move(signInTitle, 15, 20);
+        signInTitle.set_halign(Align::ALIGN_START);
+        signInTitle.set_hexpand(true);
+        top.attach(signInTitle, 0, 0, 1, 1);
 
         configureServerButton.set_label("Configure server");
         configureServerButton.signal_clicked().connect([this]() {
@@ -40,54 +50,56 @@ public:
             configureServerWindow.set_transient_for(*this);
             configureServerWindow.show_all();
         });
-        fixed.add(configureServerButton);
-        fixed.move(configureServerButton, 270, 15);
+        top.attach(configureServerButton, 1, 0, 1, 1);
 
-        usernameHeader.set_text("Username");
-        fixed.add(usernameHeader);
-        fixed.move(usernameHeader, 15, 70);
+        usernameHeader.set_text("Username:");
+        usernameHeader.set_halign(Align::ALIGN_END);
+        grid.attach(usernameHeader, 0, 1, 1, 1);
 
         usernameEntry.set_placeholder_text("Enter your username");
         usernameEntry.set_width_chars(25);
+        usernameEntry.set_hexpand(true);
         usernameEntry.signal_changed().connect([this]() {
             usernameEntry.get_style_context()->remove_class("error");
         });
         usernameEntry.signal_activate().connect([this]() {
             on_logInButton_clicked(); // so you don't have to click the button, how convenient!
         });
-        fixed.add(usernameEntry);
-        fixed.move(usernameEntry, 15, 100);
+        grid.attach(usernameEntry, 1, 1, 2, 1);
 
-        rememberMe.set_label("Remember me");
-        fixed.add(rememberMe);
-        fixed.move(rememberMe, 15, 140);
+        portHeader.set_text("P2P Port:");
+        portHeader.set_halign(Align::ALIGN_END);
+        grid.attach(portHeader, 0, 2, 1, 1);
+
+        portEntry.set_placeholder_text("Port");
+        portEntry.set_width_chars(5);
+        portEntry.signal_changed().connect(sigc::mem_fun(*this, &LoginWindow::on_portEntry_changed));
+        grid.attach(portEntry, 1, 2, 1, 1);
 
         autoPort.set_label("Auto assign port");
         autoPort.set_active(true);
         autoPort.signal_toggled().connect([this]() {
             portEntry.set_sensitive(!autoPort.get_active());
         });
-        fixed.add(autoPort);
-        fixed.move(autoPort, 280, 70);
+        grid.attach(autoPort, 2, 2, 1, 1);
 
-        portEntry.set_placeholder_text("Port");
-        portEntry.set_width_chars(5);
-        portEntry.signal_changed().connect(sigc::mem_fun(*this, &LoginForm::on_portEntry_changed));
-        portEntry.set_sensitive(!autoPort.get_active());
-        fixed.add(portEntry);
-        fixed.move(portEntry, 280, 100);
+        grid.attach(bottom, 0, 4, 4, 1);
+        bottom.set_row_spacing(10);
+        bottom.set_column_spacing(10);
+
+        rememberMe.set_label("Remember me");
+        bottom.attach(rememberMe, 0, 0, 2, 1);
 
         logInButton.set_label("Log in");
-        logInButton.set_size_request(130, 20);
+        // logInButton.set_size_request(130, 20);
+        logInButton.set_hexpand(true);
         logInButton.get_style_context()->add_class("suggested-action");
-        logInButton.signal_clicked().connect(sigc::mem_fun(*this, &LoginForm::on_logInButton_clicked));
-        fixed.add(logInButton);
-        fixed.move(logInButton, 15, 180);
+        logInButton.signal_clicked().connect(sigc::mem_fun(*this, &LoginWindow::on_logInButton_clicked));
+        bottom.attach(logInButton, 0, 1, 1, 1);
 
         registerButton.set_label("Register");
-        registerButton.signal_clicked().connect(sigc::mem_fun(*this, &LoginForm::on_registerButton_clicked));
-        fixed.add(registerButton);
-        fixed.move(registerButton, 165, 180);
+        registerButton.signal_clicked().connect(sigc::mem_fun(*this, &LoginWindow::on_registerButton_clicked));
+        bottom.attach(registerButton, 1, 1, 1, 1);
 
         show_all();
     }
@@ -108,7 +120,8 @@ private:
             autoPort.set_active(false);
             portEntry.set_text(clientPort);
         }
-    
+        portEntry.set_sensitive(!autoPort.get_active());
+
         usernameEntry.set_text(username);
         portEntry.set_text(clientPort);
         autoPort.set_active(true);
@@ -169,7 +182,7 @@ private:
 
         logInButton.set_sensitive(false);
         logInButton.set_label("Logging in...");
-        signal_timeout().connect_once(sigc::mem_fun(*this, &LoginForm::logIn), 50);
+        signal_timeout().connect_once(sigc::mem_fun(*this, &LoginWindow::logIn), 50);
     }
 
     void logIn() {
@@ -189,7 +202,7 @@ private:
             // login success
             logInButton.set_sensitive(true);
             logInButton.set_label("Log in");
-            
+
             clientAction.loggedIn = true;
 
             if (rememberMe.get_active()) {
@@ -206,7 +219,7 @@ private:
             }
 
             hide();
-            
+
         } else {
             MessageDialog dialog(*this, "Login failed", false, MessageType::MESSAGE_ERROR, ButtonsType::BUTTONS_OK, true);
             dialog.set_secondary_text(clientAction.error_t);
@@ -223,13 +236,16 @@ private:
         registerWindow.show_all();
     }
 
-    Fixed fixed;
+    Grid top;
+    Grid grid;
+    Grid bottom;
     ScrolledWindow scrolledWindow;
     Label signInTitle;
     Button configureServerButton;
     Label usernameHeader;
     Entry usernameEntry;
     CheckButton rememberMe;
+    Label portHeader;
     CheckButton autoPort;
     Entry portEntry;
     Button logInButton;
