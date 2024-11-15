@@ -97,7 +97,7 @@ private:
         }
 
         try {
-            if (clientAction.p2pListenSocket.checkPort(port) == -1) {
+            if (clientAction.p2pListenSocket.checkPort(port, true) == -1) {
                 portEntry.get_style_context()->add_class("error");
             } else {
                 portEntry.get_style_context()->remove_class("error");

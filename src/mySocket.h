@@ -27,7 +27,7 @@ public:
 
     MySocket(const std::string &socketName) : sockfd(-1), socketNameForDebug(socketName) {}
 
-    int checkPort(const std::string &port) {
+    int checkPort(const std::string &port, bool isServer = false) {
         if (port.empty())
             return -1;
         if (port.find_first_not_of("0123456789") != std::string::npos)
@@ -39,6 +39,8 @@ public:
             error_t = "Failed to convert port to a number\nException: " + std::string(e.what());
             return -1;
         }
+        if (isServer)
+            return portNum;
         if (portNum < 1024 || portNum > 65535)
             if (portNum != 0)
                 return -1;
