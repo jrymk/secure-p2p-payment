@@ -7,6 +7,7 @@
 int main(int argc, char *argv[]) {
     auto app = Gtk::Application::create(argc, argv, "uk.jerrymk.p2ppayment", Gio::APPLICATION_NON_UNIQUE);
 
+    // start the application and manage the login window/main window flow.
     app->signal_startup().connect([&app]() {
         LoginWindow *loginForm = new LoginWindow();
         MainWindow *mainWindow = new MainWindow();

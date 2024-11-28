@@ -1,11 +1,11 @@
+client:
+	g++ -o ./build/client ./src/client.cpp `pkg-config --cflags --libs gtkmm-3.0` -std=c++11
 install-deps:
 	sudo apt-get update
 	sudo apt-get install gcc build-essential -y
 	sudo apt-get install libgtkmm-3.0-dev -y
 server-run:
 	./build/demo_server 5051 -a
-client:
-	g++ -o ./build/client ./src/client.cpp `pkg-config --cflags --libs gtkmm-3.0` -std=c++11
 run:
 	./build/client
 run-a-pair:

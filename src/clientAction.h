@@ -245,10 +245,13 @@ public:
         transferOk = false;
 
         waitingForRecv = true;
-        p2pSendSocket.send(username + "#" + std::to_string(amount) + "#" + payeeUsername);
-        std::cerr << "Sent micropayment transaction to " << payeeUsername << std::endl;
-
-        return true;
+        if (p2pSendSocket.send(username + "#" + std::to_string(amount) + "#" + payeeUsername)) {
+            std::cerr << "Sent micropayment transaction to " << payeeUsername << std::endl;
+            return true;
+        }
+        
+        error_t = "Failed to send payment to " + payeeUsername + "\nError: " + error_t;
+        return false;
     }
 
     bool verifyMicropaymentTransaction() {

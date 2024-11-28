@@ -27,6 +27,7 @@ public:
 
     MySocket(const std::string &socketName) : sockfd(-1), socketNameForDebug(socketName) {}
 
+    // checks if a string port number is valid, and converts it to an integer. isServer = true allows ports less than 1024
     int checkPort(const std::string &port, bool isServer = false) {
         if (port.empty())
             return -1;
@@ -47,6 +48,7 @@ public:
         return portNum;
     }
 
+    // connect to the given hostname/IP address and port using TCP
     bool connect(const std::string &hostname, const std::string &serverPort, int timeout = 5) {
         if (isConnected) {
             error_t = "Already connected to server";
@@ -127,6 +129,7 @@ public:
         return true;
     }
 
+    // bind the socket to the given port on the system
     bool bindSocket(const std::string &clientPort) {
         std::cerr << "SOCK " << socketNameForDebug << " binding to port " << clientPort << std::endl;
         struct addrinfo hints, *res, *p;
@@ -161,6 +164,7 @@ public:
         return true;
     }
 
+    // listen for incoming TCP connections
     bool listen(int timeout_sec = 5) {
         std::cerr << "SOCK " << socketNameForDebug << " starting to listen for connection" << std::endl;
         if (::listen(sockfd, 10) == -1) {
@@ -189,6 +193,7 @@ public:
         return true;
     }
 
+    // accept the incoming connection with the given socket
     void accept(MySocket &newSock) {
         std::cerr << "SOCK " << socketNameForDebug << " accepting connection" << std::endl;
         struct sockaddr_storage their_addr;
@@ -201,6 +206,7 @@ public:
         std::cerr << "OK" << std::endl;
     }
 
+    // randomly find an available port on the system
     int findAvailablePort() {
         std::cerr << "SOCK " << socketNameForDebug << " finding available port" << std::endl;
         int tempSockFd = ::socket(AF_INET, SOCK_STREAM, 0);
@@ -230,6 +236,7 @@ public:
         return -1;
     }
 
+    // send a message with the socket
     bool send(const std::string &message) {
         std::cerr << "SOCK " << socketNameForDebug << " sending: " << message << std::endl;
         int sendRes = ::send(sockfd, message.c_str(), message.size(), 0);
@@ -240,6 +247,7 @@ public:
         return true;
     }
 
+    // receive a message from the socket
     std::string recv(int timeout_sec = 5) {
         std::cerr << "SOCK " << socketNameForDebug << " receiving" << std::endl;
         char buf[1024];
@@ -277,6 +285,7 @@ public:
         return buf;
     }
 
+    // close the active TCP connection. This is also called when the MySocket object is destroyed
     void closeConnection() {
         std::cerr << "SOCK " << " Closing " << socketNameForDebug << " socket" << std::endl;
         // close tcp connection
