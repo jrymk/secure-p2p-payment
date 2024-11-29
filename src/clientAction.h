@@ -148,8 +148,12 @@ public:
             std::vector<std::string> lines;
             std::string line;
             std::istringstream responseStream(response);
-            while (std::getline(responseStream, line))
+            while (std::getline(responseStream, line)) {
+                // remove trailing \r
+                if (!line.empty() && line[line.size() - 1] == '\r')
+                    line.pop_back();
                 lines.push_back(line);
+            }
 
             std::cerr << "Received " << lines.size() << " lines" << std::endl;
 
@@ -159,9 +163,10 @@ public:
                 return false;
             }
 
-            for (const auto &line : lines)
-                if (line == "Transfer OK!")
+            for (const auto &line : lines) {
+                if ("Transfer OK!")
                     transferOk = true;
+            }
 
             if (lines.size() < 4) {
                 error_t = "Invalid response";
@@ -227,6 +232,7 @@ public:
             if (user.username == payeeUsername) {
                 payeeIPAddr = user.ipAddr;
                 payeePort = user.p2pPort;
+                std::cerr << payeePort.size() << std::endl;
                 break;
             }
         }
@@ -257,7 +263,7 @@ public:
     bool verifyMicropaymentTransaction() {
         std::string response = clientSocket.recv(5);
         waitingForRecv = false;
-        if (response == "Transfer OK!\n") {
+        if (response == "Transfer OK!\n" || response == "Transfer OK!\r\n") {
             transferOk = true;
             return true;
         }

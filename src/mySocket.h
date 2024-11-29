@@ -15,6 +15,7 @@
 #include <cerrno>
 #include <string>
 #include <random>
+#include <sstream>
 
 // a custom simple socket class to consolidate the socket code
 // heavily inspired by Beej's Guide to Network Programming
@@ -23,9 +24,10 @@ public:
     int sockfd;
     std::string error_t;
     std::string socketNameForDebug = "Unknown";
+    bool enableLogging = false;
     bool isConnected = false;
 
-    MySocket(const std::string &socketName) : sockfd(-1), socketNameForDebug(socketName) {}
+    MySocket(const std::string &socketName, bool enableLogging = false) : sockfd(-1), socketNameForDebug(socketName), enableLogging(enableLogging) {}
 
     // checks if a string port number is valid, and converts it to an integer. isServer = true allows ports less than 1024
     int checkPort(const std::string &port, bool isServer = false) {
@@ -54,7 +56,8 @@ public:
             error_t = "Already connected to server";
             return false;
         }
-        std::cerr << "SOCK " << socketNameForDebug << " connecting to " << hostname << ":" << serverPort << std::endl;
+        if (enableLogging)
+            std::cerr << "Socket " << socketNameForDebug << " connecting to " << hostname << ":" << serverPort << std::endl;
         struct addrinfo hints, *res, *server_info;
         memset(&hints, 0, sizeof hints);
         hints.ai_family = AF_UNSPEC;
@@ -124,14 +127,15 @@ public:
         freeaddrinfo(res);
         this->sockfd = sockfd;
         isConnected = true;
-        std::cerr << "Connected to " << hostname << ":" << serverPort << std::endl;
-        std::cerr << "OK" << std::endl;
+        if (enableLogging)
+            std::cerr << "Connected to " << hostname << ":" << serverPort << std::endl;
         return true;
     }
 
     // bind the socket to the given port on the system
     bool bindSocket(const std::string &clientPort) {
-        std::cerr << "SOCK " << socketNameForDebug << " binding to port " << clientPort << std::endl;
+        if (enableLogging)
+            std::cerr << "Socket " << socketNameForDebug << " binding to port " << clientPort << std::endl;
         struct addrinfo hints, *res, *p;
         memset(&hints, 0, sizeof hints);
         hints.ai_family = AF_UNSPEC;
@@ -160,13 +164,14 @@ public:
             error_t = "Failed to bind socket to port " + clientPort;
             return false;
         }
-        std::cerr << "OK" << std::endl;
+        if (enableLogging)
+            std::cerr << "OK" << std::endl;
         return true;
     }
 
     // listen for incoming TCP connections
     bool listen(int timeout_sec = 5) {
-        std::cerr << "SOCK " << socketNameForDebug << " starting to listen for connection" << std::endl;
+        // std::cerr << "Socket " << socketNameForDebug << " starting to listen for connection" << std::endl;
         if (::listen(sockfd, 10) == -1) {
             error_t = strerror(errno);
             return false;
@@ -189,26 +194,35 @@ public:
             return false;
         }
 
-        std::cerr << "OK" << std::endl;
+        if (enableLogging)
+            std::cerr << "Listen OK" << std::endl;
         return true;
     }
 
     // accept the incoming connection with the given socket
-    void accept(MySocket &newSock) {
-        std::cerr << "SOCK " << socketNameForDebug << " accepting connection" << std::endl;
+    std::pair<std::string, std::string> accept(MySocket &newSock) {
+        if (enableLogging)
+            std::cerr << "Socket " << socketNameForDebug << " accepting connection" << std::endl;
         struct sockaddr_storage their_addr;
         socklen_t addr_size = sizeof(their_addr);
         newSock.sockfd = ::accept(sockfd, (struct sockaddr *)&their_addr, &addr_size);
         if (newSock.sockfd == -1) {
             error_t = strerror(errno);
-            return;
+            return {"", ""};
         }
-        std::cerr << "OK" << std::endl;
+        if (enableLogging)
+            std::cerr << "OK" << std::endl;
+        // return ipv4 address and port
+        char ipstr[INET_ADDRSTRLEN];
+        struct sockaddr_in *s = (struct sockaddr_in *)&their_addr;
+        inet_ntop(AF_INET, &s->sin_addr, ipstr, sizeof(ipstr));
+        return {ipstr, std::to_string(ntohs(s->sin_port))};
     }
 
     // randomly find an available port on the system
     int findAvailablePort() {
-        std::cerr << "SOCK " << socketNameForDebug << " finding available port" << std::endl;
+        if (enableLogging)
+            std::cerr << "Socket " << socketNameForDebug << " finding available port" << std::endl;
         int tempSockFd = ::socket(AF_INET, SOCK_STREAM, 0);
         if (tempSockFd == -1) {
             error_t = strerror(errno);
@@ -228,7 +242,8 @@ public:
             addr.sin_port = htons(port);
             if (::bind(tempSockFd, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
                 ::close(tempSockFd);
-                std::cerr << "OK Found available port: " << port << std::endl;
+                if (enableLogging)
+                    std::cerr << "OK Found available port: " << port << std::endl;
                 return port;
             }
         }
@@ -238,7 +253,8 @@ public:
 
     // send a message with the socket
     bool send(const std::string &message) {
-        std::cerr << "SOCK " << socketNameForDebug << " sending: " << message << std::endl;
+        if (enableLogging)
+            std::cerr << "Socket " << socketNameForDebug << " sending: " << message << std::endl;
         int sendRes = ::send(sockfd, message.c_str(), message.size(), 0);
         if (sendRes == -1) {
             error_t = strerror(errno);
@@ -249,7 +265,8 @@ public:
 
     // receive a message from the socket
     std::string recv(int timeout_sec = 5) {
-        std::cerr << "SOCK " << socketNameForDebug << " receiving" << std::endl;
+        if (enableLogging)
+            std::cerr << "Socket " << socketNameForDebug << " receiving" << std::endl;
         char buf[1024];
         fd_set readfds;
         FD_ZERO(&readfds);
@@ -268,11 +285,18 @@ public:
             return "";
         }
 
+        if (!FD_ISSET(sockfd, &readfds)) {
+            error_t = "Socket not ready for reading";
+            std::cerr << "FD_ISSET error: " << error_t << std::endl;
+            return "";
+        }
+
         int numbytes = ::recv(sockfd, buf, sizeof(buf) - 1, 0);
-        std::cerr << "recv returned " << numbytes << std::endl;
+        if (enableLogging)
+            std::cerr << "recv returned " << numbytes << std::endl;
         if (numbytes == -1) {
             error_t = strerror(errno);
-            std::cerr << error_t << std::endl;
+            std::cerr << "ERROR: " << error_t << std::endl;
             return "";
         }
         if (numbytes == 0) {
@@ -281,25 +305,39 @@ public:
         }
 
         buf[numbytes] = '\0';
-        std::cerr << "OK Received: " << buf << std::endl;
+        if (enableLogging)
+            std::cerr << "OK Received: " << buf << std::endl;
         return buf;
     }
 
     // close the active TCP connection. This is also called when the MySocket object is destroyed
     void closeConnection() {
-        std::cerr << "SOCK " << " Closing " << socketNameForDebug << " socket" << std::endl;
+        if (enableLogging)
+            std::cerr << "Socket " << " Closing " << socketNameForDebug << " socket" << std::endl;
         // close tcp connection
         if (isConnected) {
             ::shutdown(sockfd, SHUT_RDWR); // Gracefully shut down the connection
             ::close(sockfd);
             isConnected = false;
         }
-        std::cerr << "Connection closed gracefully" << std::endl;
+        if (enableLogging)
+            std::cerr << "Connection closed gracefully" << std::endl;
     }
 
     ~MySocket() {
-        closeConnection();
+        if (isConnected)
+            closeConnection();
     }
 };
+
+std::vector<std::string> split(const std::string &s, char delimiter) {
+    std::vector<std::string> tokens;
+    std::string token;
+    std::istringstream tokenStream(s);
+    while (std::getline(tokenStream, token, delimiter)) {
+        tokens.push_back(token);
+    }
+    return tokens;
+}
 
 #endif // SOCKET_H

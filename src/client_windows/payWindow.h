@@ -126,6 +126,7 @@ public:
             // we actually don't need to wait. we just do this to show the user that the payment is being processed
         } else {
             MessageDialog dialog(*this, "Failed to send payment", false, MessageType::MESSAGE_ERROR, ButtonsType::BUTTONS_OK, true);
+            std::cerr << "Failed to send payment, error: " << clientAction.error_t << std::endl;
             dialog.set_secondary_text(clientAction.error_t);
             dialog.run();
         }
