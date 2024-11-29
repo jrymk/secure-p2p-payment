@@ -7,6 +7,7 @@
 #include <fstream>
 #include <thread>
 #include <atomic>
+#include <iomanip>
 #include "mySocket.h"
 
 struct UserAccount {
@@ -35,8 +36,7 @@ public:
     std::atomic<bool> serverListening;
     std::thread listeningThread;
 
-    ServerAction(int consoleLogLevel) : serverSocket("server"), consoleLogLevel(consoleLogLevel) {
-        serverSocket.enableLogging = consoleLogLevel >= 3;
+    ServerAction() : serverSocket("server") {
     }
 
     bool startServer(const std::string &port) {
@@ -51,7 +51,8 @@ public:
             return false;
         }
 
-        std::cerr << "Server started on port " << port << std::endl;
+        if (consoleLogLevel >= 3)
+            std::cerr << "Server started on port " << port << std::endl;
         return true;
     }
 
@@ -69,7 +70,6 @@ public:
                     std::cout << "\033[35;1mAccepted connection from " << ipAndPort.first << ":" << ipAndPort.second << "\033[0m" << std::endl;
                     onlineUsers.emplace_back(OnlineEntry{client, "", ipAndPort.first, serverSocket.checkPort(ipAndPort.second), 0});
 
-                    std::vector<OnlineEntry>::iterator clientEntry = onlineUsers.end() - 1;
                     std::thread([this, ipAndPort]() { clientInstance(ipAndPort); }).detach();
                 }
             }
@@ -84,7 +84,8 @@ public:
                 break;
             }
 
-            handleIncomingMessage(clientEntry);
+            if (!handleIncomingMessage(clientEntry))
+                break;
 
             // std::string message = clientEntry->clientSocket.recv(5);
             // if (message.empty()) {
@@ -103,7 +104,8 @@ public:
             // sleep 100ms
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
-        std::cerr << "Connection closed" << std::endl;
+        if (consoleLogLevel >= 3)
+            std::cerr << "Connection closed" << std::endl;
     }
 
     std::vector<OnlineEntry>::iterator findOnlineUser(const std::pair<std::string, std::string> &ipAndPort) {
@@ -205,7 +207,8 @@ public:
                 return true;
             }
             client->send("Bye\r\n");
-            std::cerr << "\033[31mClient " << ipAndPort.first << ":" << ipAndPort.second << " logged out" << "\033[0m" << std::endl;
+            if (consoleLogLevel >= 3)
+                std::cerr << "\033[34mClient " << ipAndPort.first << ":" << ipAndPort.second << " logged out" << "\033[0m" << std::endl;
             std::string username;
             auto onlineUser = findOnlineUser(ipAndPort);
             if (onlineUser == onlineUsers.end()) {
@@ -225,6 +228,7 @@ public:
             }
 
             onlineUsers.erase(onlineUser);
+            return false;
         } else { // no keywords
             if (parts.size() == 2) {
                 // I hope it is a login
@@ -309,9 +313,16 @@ public:
     }
 
     void printOnlineList() {
-        std::cerr << "\033[33mOnline users list:" << std::endl;
+        std::cerr << "\033[33;7mOnline users list:\033[27m" << std::endl;
+        std::cerr << std::right << std::setw(20) << "Username  "
+                  << std::left << std::setw(16) << "IP Address"
+                  << std::setw(6) << "Port"
+                  << std::setw(6) << "P2P Port" << std::endl;
         for (const auto &user : onlineUsers) {
-            std::cerr << user.username << " " << user.ipAddr << " " << user.clientPort << " " << user.p2pPort << std::endl;
+            std::cerr << std::right << std::setw(20) << user.username + "  "
+                      << std::left << std::setw(16) << user.ipAddr
+                      << std::setw(6) << user.clientPort
+                      << std::setw(6) << user.p2pPort << std::endl;
         }
         std::cerr << "\033[0m";
     }
@@ -360,11 +371,14 @@ public:
 
     void stopListening() {
         serverListening = false;
-        std::cerr << "Stopping server listening thread" << std::endl;
+        if (consoleLogLevel >= 3)
+            std::cerr << "Stopping server listening thread" << std::endl;
         if (listeningThread.joinable())
             listeningThread.join();
-        std::cerr << "Stopped server listening thread" << std::endl;
+        std::cerr << "\033[7mServer stopped successfully\033[0m" << std::endl;
     }
 };
+
+ServerAction serverAction;
 
 #endif // SERVER_ACTION_H

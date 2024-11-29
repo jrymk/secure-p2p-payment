@@ -1,5 +1,8 @@
 #include "serverAction.h"
 #include <string>
+#include "./server_windows/serverMainWindow.h"
+
+volatile bool stopServer = false;
 
 // args: <portNum> <Options>
 // Options:
@@ -10,6 +13,12 @@
 int main(int argc, char *argv[]) {
     int consoleLogLevel = 0; // no log
     bool runHeadless = false;
+
+    if (argc < 2) {
+        std::cerr << "args: <portNum> <Options>" << std::endl;
+        return 1;
+    }
+
     for (int i = 2; i < argc; i++) {
         if (std::string(argv[i]) == "-d")
             consoleLogLevel = std::max(consoleLogLevel, 1);
@@ -30,13 +39,45 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    ServerAction serverAction(consoleLogLevel);
+    serverAction.consoleLogLevel = consoleLogLevel;
     if (!serverAction.startServer(argv[1])) {
         std::cerr << "Failed to start server: " << serverAction.error_t << std::endl;
         return 1;
     }
     serverAction.startListening();
+    std::cout << "\033[7mServer started on port " << argv[1] << ", type q to quit server\033[0m" << std::endl;
 
-    while (true) {
+    if (runHeadless) {
+        std::thread keyPressThread([]() {
+            // wait for 'q' key press to stop the server gracefully
+            while (std::cin.get() != 'q') {
+            }
+            stopServer = true;
+            std::cerr << "Exiting server" << std::endl;
+        });
+
+        while (true) {
+            if (stopServer) {
+                serverAction.stopListening();
+                keyPressThread.join();
+                return 0;
+            }
+        }
+    } else {
+
+        auto app = Gtk::Application::create("uk.jerrymk.p2ppaymentserver", Gio::APPLICATION_NON_UNIQUE);
+
+        app->signal_startup().connect([&app]() {
+            ServerMainWindow *serverMainWindow = new ServerMainWindow();
+            serverMainWindow->show_all();
+            app->hold();
+
+            serverMainWindow->signal_hide().connect([&app]() {
+                serverAction.stopListening();
+                app->release();
+            });
+        });
+
+        return app->run();
     }
 }
