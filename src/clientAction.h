@@ -1,11 +1,12 @@
 #ifndef CLIENT_ACTION_H
 #define CLIENT_ACTION_H
 
-#include "mySocket.h"
 #include "clientConfig.h"
 #include <vector>
 #include <thread>
 #include <atomic>
+#include "mySocket.h"
+#include "encryption.h"
 
 struct UserAccount {
     std::string username;
@@ -28,7 +29,6 @@ public:
     std::string username;
     std::string p2pPort;
     int accountBalance;
-    std::string serverPublicKey;
     std::vector<UserAccount> userAccounts;
     bool transferOk = false;
     std::function<void()> statusUpdatedCallback;
@@ -36,15 +36,22 @@ public:
 
     bool waitingForRecv = false;
 
+    EVP_PKEY *serverPublicKey = nullptr;
+    EVP_PKEY *clientPrivateKey = nullptr;
+
     // p2p
     MySocket p2pListenSocket;
 
     std::thread listeningThread;
     std::atomic<bool> p2pListening;
 
-    ClientAction() : clientSocket("client"), p2pListenSocket("p2pListen") {}
+    ClientAction() : clientSocket("client", true), p2pListenSocket("p2pListen") {
+        checkKeyFiles();
+        clientPrivateKey = stringToKey(loadKeyFromFile(PRIVATE_KEY_FILE), true);
+    }
 
     bool connectToServer(const std::string &hostname, const std::string &serverPort) {
+        std::cerr << "Connecting to server" << std::endl;
         // add timeout
         clientSocket.connect(hostname, serverPort, 5);
         if (!clientSocket.isConnected)
@@ -53,16 +60,26 @@ public:
             serverAddress = hostname;
             port = serverPort;
         }
+
+        clientSocket.send("HELLO");
+        std::string response = clientSocket.recv(5);
+
+        std::cerr << "Public key received, reading" << std::endl;
+
+        serverPublicKey = stringToKey(response, false);
+        std::cerr << "Server public key: " << response.substr(27, 37) << "..." << std::endl;
+
         return clientSocket.isConnected;
     }
 
     bool registerAccount(const std::string &username) {
+        std::cerr << "Registering account" << std::endl;
         if (!clientSocket.isConnected) {
             error_t = "Not connected to server";
             return false;
         }
-        clientSocket.send("REGISTER#" + username);
-        std::string response = clientSocket.recv(5);
+        clientSocket.sendEncrypted(serverPublicKey, "REGISTER#" + username);
+        std::string response = clientSocket.recvEncrypted(clientPrivateKey);
 
         if (response.substr(0, 3) == "100") {
             error_t = "Server response: " + response;
@@ -109,11 +126,17 @@ public:
             this->p2pPort = std::to_string(portNum);
         }
 
-        clientSocket.send(this->username + "#" + this->p2pPort);
-        std::string response = clientSocket.recv(5);
+        std::string publicKey = loadKeyFromFile(PUBLIC_KEY_FILE);
 
-        if (response.substr(0, 3) == "220") {
+        clientSocket.sendEncrypted(serverPublicKey, "LOGIN#" + this->username + "#" + this->p2pPort + "#" + publicKey);
+        std::string response = clientSocket.recvEncrypted(clientPrivateKey);
+
+        if (response.substr(0, 13) == "220 AUTH_FAIL") {
             error_t = "Please check your username and try again.\nServer response: " + response;
+            return false;
+        }
+        if (response.substr(0, 17) == "250 MESSAGE_ERROR") {
+            error_t = "Error message format from client.\nServer response: " + response;
             return false;
         }
 
@@ -168,18 +191,17 @@ public:
                     transferOk = true;
             }
 
-            if (lines.size() < 4) {
+            if (lines.size() < 3) {
                 error_t = "Invalid response";
                 return false;
             }
 
             accountBalance = std::stoi(lines[0]);
-            serverPublicKey = lines[1];
 
-            int numAccounts = std::stoi(lines[2]);
+            int numAccounts = std::stoi(lines[1]);
 
             userAccounts.clear();
-            for (int i = 3; i < numAccounts + 3; i++) {
+            for (int i = 2; i < numAccounts + 2; i++) {
                 std::istringstream accountStream(lines[i]);
                 std::string username, ipAddr, portNum;
                 std::getline(accountStream, username, '#');
@@ -205,8 +227,9 @@ public:
             std::cerr << "Waiting for Transfer OK! receive/timeout" << std::endl;
             return false;
         }
-        clientSocket.send("List");
-        bool parseSuccess = parseOnlineUsers(clientSocket.recv(5));
+        clientSocket.sendEncrypted(serverPublicKey, "List");
+        std::string response = clientSocket.recvEncrypted(clientPrivateKey);
+        bool parseSuccess = parseOnlineUsers(response);
 
         if (!parseSuccess) {
             error_t = "Failed to fetch server info\n" + error_t;
@@ -237,6 +260,14 @@ public:
             }
         }
 
+        // find the payee's public key
+        clientSocket.sendEncrypted(serverPublicKey, "PKEY#" + payeeUsername);
+        std::string payeePkey = clientSocket.recvEncrypted(clientPrivateKey);
+        if (payeePkey.empty() || payeePkey.substr(0, 3) == "240") {
+            error_t = "Failed to fetch payee's public key\n" + clientSocket.error_t;
+            return false;
+        }
+
         if (payeeIPAddr.empty() || payeePort.empty()) {
             error_t = "Payee IP address or port number not found in the list of online users";
             return false;
@@ -251,17 +282,17 @@ public:
         transferOk = false;
 
         waitingForRecv = true;
-        if (p2pSendSocket.send(username + "#" + std::to_string(amount) + "#" + payeeUsername)) {
+        if (p2pSendSocket.sendEncrypted(stringToKey(payeePkey, false), username + "#" + std::to_string(amount) + "#" + payeeUsername)) {
             std::cerr << "Sent micropayment transaction to " << payeeUsername << std::endl;
             return true;
         }
-        
+
         error_t = "Failed to send payment to " + payeeUsername + "\nError: " + error_t;
         return false;
     }
 
     bool verifyMicropaymentTransaction() {
-        std::string response = clientSocket.recv(5);
+        std::string response = clientSocket.recvEncrypted(clientPrivateKey);
         waitingForRecv = false;
         if (response == "Transfer OK!\n" || response == "Transfer OK!\r\n") {
             transferOk = true;
@@ -273,8 +304,8 @@ public:
 
     void logOut() {
         if (clientSocket.isConnected) {
-            clientSocket.send("Exit"); // send exit message to server on connection close
-            std::cout << "Server replied: " << clientSocket.recv(5) << std::endl;
+            clientSocket.sendEncrypted(serverPublicKey, "Exit");
+            std::cout << "Server replied: " << clientSocket.recvEncrypted(clientPrivateKey) << std::endl;
             std::cout << clientSocket.error_t << std::endl;
         }
         loggedIn = false;
@@ -294,9 +325,12 @@ public:
                 if (p2pListenSocket.listen(1)) {
                     MySocket p2pRecv("p2p_recv");
                     p2pListenSocket.accept(p2pRecv);
-                    std::string message = p2pRecv.recv(1);
+                    bool encrypted = false;
+                    std::string message = p2pRecv.recvEncrypted(clientPrivateKey, &encrypted);
                     if (message.empty())
                         error_t = "Failed to receive message from peer\n" + p2pRecv.error_t;
+                    else if (!encrypted)
+                        error_t = "Received unencrypted message from peer";
                     else
                         handleIncomingMessage(message);
                 } else {
@@ -328,7 +362,7 @@ public:
 
         std::cout << "Payer: " << payerUsername << ", Amount: " << amount << ", Payee: " << payeeUsername << std::endl;
 
-        clientSocket.send(payerUsername + "#" + amount + "#" + payeeUsername);
+        clientSocket.sendEncrypted(serverPublicKey, payerUsername + "#" + amount + "#" + payeeUsername);
 
         // fetchServerInfo(); // I don't think we can do this here, because multithreading thing
     }

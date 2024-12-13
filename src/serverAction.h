@@ -9,6 +9,7 @@
 #include <atomic>
 #include <iomanip>
 #include "mySocket.h"
+#include "encryption.h"
 
 struct UserAccount {
     std::string username;
@@ -21,13 +22,14 @@ struct OnlineEntry {
     std::string ipAddr;
     int clientPort;
     int p2pPort;
+    std::string publicKey;
 };
 
 class ServerAction {
 public:
     int consoleLogLevel = 0;
-
-    std::vector<UserAccount> userAccounts;
+    std::vector<UserAccount>
+        userAccounts;
     std::vector<OnlineEntry> onlineUsers;
 
     MySocket serverSocket;
@@ -36,7 +38,14 @@ public:
     std::atomic<bool> serverListening;
     std::thread listeningThread;
 
+    std::string serverPublicKey;
+    EVP_PKEY *serverPrivateKey;
+
     ServerAction() : serverSocket("server") {
+        checkKeyFiles();
+        std::string privateKeyStr = loadKeyFromFile(PRIVATE_KEY_FILE);
+        serverPrivateKey = stringToKey(privateKeyStr, true);
+        serverPublicKey = loadKeyFromFile(PUBLIC_KEY_FILE);
     }
 
     bool startServer(const std::string &port) {
@@ -87,21 +96,6 @@ public:
             if (!handleIncomingMessage(clientEntry))
                 break;
 
-            // std::string message = clientEntry->clientSocket.recv(5);
-            // if (message.empty()) {
-            //     // check if socket is still connected
-            //     if (clientEntry->clientSocket.error_t == "Connection closed by peer") {
-            //         std::cerr << "\033[31mClient " << clientEntry->ipAddr << ":" << clientEntry->clientPort << " disconnected" << "\033[0m" << std::endl;
-            //         break;
-            //     } else if (clientEntry->clientSocket.error_t == "Timeout occurred") {
-            //         std::cerr << "\033[31mClient " << clientEntry->ipAddr << ":" << clientEntry->clientPort << " disconnected (listen timeout)" << "\033[0m" << std::endl;
-            //     }
-            // }
-            // std::cerr << "Received message: " << message << std::endl;
-
-            // if (message == "Exit")
-            //     clientEntry->clientSocket.send("Bye\r\n");
-            // sleep 100ms
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
         if (consoleLogLevel >= 3)
@@ -133,7 +127,10 @@ public:
 
         if (consoleLogLevel >= 3)
             std::cerr << "Waiting for message from " << ipAndPort.first << ":" << ipAndPort.second << std::endl;
-        std::string message = client->recv(5);
+
+        bool encrypted = false;
+        std::string message = client->recvEncrypted(serverPrivateKey, &encrypted);
+
         if (consoleLogLevel >= 3)
             std::cerr << "Received message: " << message << std::endl;
 
@@ -150,16 +147,18 @@ public:
             return true;
         }
 
-        // register:
-        // REGISTER#<UserAccountName>
-        // login:
-        // <UserAccountName>#<portNum>
-        // list online users:
-        // List
-        // logout:
-        // Exit
-        // micropayment transfer:s
-        // <MyUserAccountName>#<payAmount>#<PayeeUserAccountName>
+        // get server public key (unencrypted HELLO)
+        if (message == "HELLO") {
+            std::cerr << "Received HELLO from " << ipAndPort.first << ":" << ipAndPort.second << std::endl;
+            client->send(serverPublicKey + "\r\n");
+            return true;
+        }
+
+        /// ENCRYPTED MESSAGES
+        if (!encrypted) {
+            client->send("Invalid unencrypted message format\r\n");
+            return true;
+        }
 
         std::vector<std::string> parts = split(message, '#');
         if (parts.size() < 1) {
@@ -167,26 +166,7 @@ public:
             return true;
         }
 
-        // register
-        if (parts[0] == "REGISTER") {
-            if (parts.size() != 2) {
-                error_t = "Invalid message format";
-                std::cerr << "\033[31mClient " << ipAndPort.first << ":" << ipAndPort.second << " failed to register username, " << error_t << "\033[0m" << std::endl;
-                return true;
-            }
-            if (registerUser(*client, parts[1])) {
-                if (consoleLogLevel >= 1) {
-                    std::cout << "\033[36;1mClient " << ipAndPort.first << ":" << ipAndPort.second
-                              << " registered username " << parts[1] << "\033[0m" << std::endl;
-                    if (consoleLogLevel >= 2) {
-                        printOnlineList();
-                    }
-                }
-            } else
-                std::cerr << "\033[31mClient " << ipAndPort.first << ":" << "\033[0m" << ipAndPort.second
-                          << " failed to register username " << parts[1] << ", " << error_t << std::endl;
-            return true;
-        } else if (parts[0] == "List") {
+        if (parts[0] == "List") {
             auto onlineUser = findOnlineUser(ipAndPort);
             if (onlineUser == onlineUsers.end()) {
                 client->send("Please log in first\r\n");
@@ -199,7 +179,7 @@ public:
                 std::cerr << "\033[31mClient " << ipAndPort.first << ":" << ipAndPort.second << " requested online list but not found in user accounts" << "\033[0m" << std::endl;
                 return true;
             }
-            sendOnlineUsers(*client, *userAccount);
+            sendOnlineUsers(*client, *userAccount, onlineUser->publicKey);
         } else if (parts[0] == "Exit") {
             // logout
             if (parts.size() != 1) {
@@ -229,44 +209,109 @@ public:
 
             onlineUsers.erase(onlineUser);
             return false;
-        } else { // no keywords
-            if (parts.size() == 2) {
-                // I hope it is a login
-                auto userAccount = findUserAccount(parts[0]);
-                if (userAccount == userAccounts.end()) {
-                    client->send("220 AUTH FAIL\r\n");
-                    std::cerr << "\033[31mClient " << ipAndPort.first << ":" << ipAndPort.second << " failed to log in, user not found" << "\033[0m" << std::endl;
-                    return true;
-                }
-                auto clientOnline = findOnlineUser(ipAndPort);
-                if (clientOnline == onlineUsers.end()) {
-                    client->send("230 SERVER ERROR\r\n");
-                    std::cerr << "\033[31mClient " << ipAndPort.first << ":" << ipAndPort.second << " socket connection not found" << "\033[0m" << std::endl;
-                    return true;
-                }
-
-                // check other log in sessions and sign them out
-                for (auto user = onlineUsers.begin(); user != onlineUsers.end(); user++) {
-                    if (user->username == parts[0]) {
-                        user->username = "";
-                        user->p2pPort = 0;
-                        break;
-                    }
-                }
-
-                clientOnline->username = parts[0];
-                clientOnline->p2pPort = clientOnline->clientSocket->checkPort(parts[1]);
-
-                sendOnlineUsers(*client, *userAccount);
-
+        } else if (parts[0] == "REGISTER") {
+            if (parts.size() != 2) {
+                error_t = "Invalid message format";
+                std::cerr << "\033[31mClient " << ipAndPort.first << ":" << ipAndPort.second << " failed to register username, " << error_t << "\033[0m" << std::endl;
+                return true;
+            }
+            if (registerUser(*client, parts[1])) {
                 if (consoleLogLevel >= 1) {
-                    std::cout << "\033[32;1mClient " << ipAndPort.first << ":" << ipAndPort.second
-                              << " logged in as " << parts[0] << "\033[0m" << std::endl;
-                    if (consoleLogLevel >= 2) {
+                    std::cout << "\033[36;1mClient " << ipAndPort.first << ":" << ipAndPort.second
+                              << " registered username " << parts[1] << "\033[0m" << std::endl;
+                    if (consoleLogLevel >= 2)
                         printOnlineList();
+                }
+            } else
+                std::cerr << "\033[31mClient " << ipAndPort.first << ":" << "\033[0m" << ipAndPort.second
+                          << " failed to register username " << parts[1] << ", " << error_t << std::endl;
+            return true;
+
+        } else if (parts[0] == "LOGIN") {
+            if (parts.size() != 4) {
+                error_t = "Invalid message format, please include the public key";
+                return true;
+            }
+
+            auto userAccount = findUserAccount(parts[1]);
+            if (userAccount == userAccounts.end()) {
+                client->send("220 AUTH FAIL\r\n");
+                std::cerr << "\033[31mClient " << ipAndPort.first << ":" << ipAndPort.second << " failed to log in, user not found" << "\033[0m" << std::endl;
+                return true;
+            }
+            auto clientOnline = findOnlineUser(ipAndPort);
+            if (clientOnline == onlineUsers.end()) {
+                client->send("230 SERVER ERROR\r\n");
+                std::cerr << "\033[31mClient " << ipAndPort.first << ":" << ipAndPort.second << " socket connection not found" << "\033[0m" << std::endl;
+                return true;
+            }
+
+            // check other log in sessions and sign them out
+            for (auto user = onlineUsers.begin(); user != onlineUsers.end(); user++) {
+                if (user->username == parts[1]) {
+                    user->username = "";
+                    user->p2pPort = 0;
+                    break;
+                }
+            }
+
+            clientOnline->username = parts[1];
+            clientOnline->p2pPort = clientOnline->clientSocket->checkPort(parts[2]);
+            clientOnline->publicKey = parts[3];
+
+            sendOnlineUsers(*client, *userAccount, clientOnline->publicKey);
+
+            if (consoleLogLevel >= 1) {
+                std::cout << "\033[32;1mClient " << ipAndPort.first << ":" << ipAndPort.second
+                          << " logged in as " << parts[1] << "\033[0m" << std::endl;
+                if (consoleLogLevel >= 2)
+                    printOnlineList();
+            }
+
+            return true;
+        } else if (parts[0] == "PKEY") {
+            if (parts.size() == 1) {
+                client->send(serverPublicKey + "\r\n");
+                return true;
+            } else {
+                for (auto user = onlineUsers.begin(); user != onlineUsers.end(); user++) {
+                    if (user->username == parts[1]) {
+                        client->send(user->publicKey + "\r\n");
+                        return true;
                     }
                 }
-            } else if (parts.size() == 3) {
+            }
+            client->send("240 User_not_found\r\n");
+            return true;
+        } else if (parts[0] == "Exit") {
+            // logout
+            if (parts.size() != 1) {
+                error_t = "Invalid message format";
+                return true;
+            }
+            client->send("Bye\r\n");
+            if (consoleLogLevel >= 3)
+                std::cerr << "\033[34mClient " << ipAndPort.first << ":" << ipAndPort.second << " logged out" << "\033[0m" << std::endl;
+            std::string username;
+            auto onlineUser = findOnlineUser(ipAndPort);
+            if (onlineUser == onlineUsers.end()) {
+                std::cerr << "\033[31mClient " << ipAndPort.first << ":" << ipAndPort.second << " logged out but not found in online list" << "\033[0m" << std::endl;
+                username = "unknown";
+            } else {
+                username = onlineUser->username;
+                if (username.empty())
+                    username = "<guest>";
+            }
+            if (consoleLogLevel >= 1) {
+                std::cout << "\033[34;1mClient " << username << " logged out" << "\033[0m" << std::endl;
+                if (consoleLogLevel >= 2)
+                    printOnlineList();
+            }
+
+            onlineUsers.erase(onlineUser);
+            return false;
+        } else { // no keywords
+            if (parts.size() == 3) {
                 // I hope it is a micropayment transfer
                 auto payer = findUserAccount(parts[0]);
                 auto payee = findUserAccount(parts[2]);
@@ -307,6 +352,10 @@ public:
 
                 // send confirmation to payer
                 payerOnline->clientSocket->send("Transfer OK!\r\n");
+            } else {
+                error_t = "Invalid message format";
+                std::cerr << "\033[31mClient " << ipAndPort.first << ":" << ipAndPort.second << " sent an invalid message: " << message << "\033[0m" << std::endl;
+                client->send("250 MESSAGE_ERROR\r\n");
             }
         }
         return true;
@@ -317,12 +366,15 @@ public:
         std::cerr << std::right << std::setw(20) << "Username  "
                   << std::left << std::setw(16) << "IP Address"
                   << std::setw(6) << "Port"
-                  << std::setw(6) << "P2P Port" << std::endl;
+                  << std::setw(10) << "P2P Port"
+                  << std::setw(10) << "Public key" << std::endl;
         for (const auto &user : onlineUsers) {
+            std::string publicKey = user.publicKey.length() > 40 ? user.publicKey.substr(27, 37) + "..." : "N/A";
             std::cerr << std::right << std::setw(20) << user.username + "  "
                       << std::left << std::setw(16) << user.ipAddr
                       << std::setw(6) << user.clientPort
-                      << std::setw(6) << user.p2pPort << std::endl;
+                      << std::setw(10) << user.p2pPort
+                      << std::setw(10) << publicKey << std::endl;
         }
         std::cerr << "\033[0m";
     }
@@ -343,9 +395,10 @@ public:
         return true;
     }
 
-    bool sendOnlineUsers(MySocket &client, const UserAccount &record) {
+    bool sendOnlineUsers(MySocket &client, const UserAccount &record, const std::string &clientKeyStr) {
         std::string response = std::to_string(record.balance) + "\r\n";
-        response += "public key\r\n";
+
+        // response += serverPublicKey + "\r\n";
 
         std::vector<OnlineEntry> filteredOnlineUsers;
         for (const auto &onlineUser : onlineUsers) {
@@ -358,7 +411,8 @@ public:
         for (const auto &onlineUser : filteredOnlineUsers) {
             response += onlineUser.username + "#" + onlineUser.ipAddr + "#" + std::to_string(onlineUser.p2pPort) + "\r\n";
         }
-        if (client.send(response)) {
+
+        if (client.sendEncrypted(stringToKey(clientKeyStr, false), response)) {
             if (consoleLogLevel >= 3)
                 std::cerr << "Sent online users list to " << record.username << std::endl;
             return true;

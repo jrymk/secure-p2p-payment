@@ -9,7 +9,7 @@
 class ClientConfig {
 public:
     std::string serverAddress = "localhost";
-    std::string serverPort = "5050";
+    std::string serverPort = "5000";
     std::string username;
     std::string p2pPort = "0";
 

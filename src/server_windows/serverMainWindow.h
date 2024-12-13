@@ -254,10 +254,15 @@ public:
                 dialog.run();
             });
 
-            Button *detailsButton = manage(new Button("Manage"));
+            Button *detailsButton = manage(new Button("Details"));
             detailsButton->get_style_context()->add_class("wide-button");
-            detailsButton->set_sensitive(false);
             onlineUsersGrid.attach(*detailsButton, 5, (onlineUsersGrid.get_children().size() + 1) / 5, 1, 1);
+
+            detailsButton->signal_clicked().connect([this, user]() {
+                MessageDialog dialog(*this, "User details", false, MessageType::MESSAGE_INFO, ButtonsType::BUTTONS_OK, true);
+                dialog.set_secondary_text("IP: " + user.second.first->ipAddr + "\nPort: " + std::to_string(user.second.first->clientPort) + "\nPublic key: \n" + user.second.first->publicKey);
+                dialog.run();
+            });
         }
 
         if (filteredUsers.size() != prefilteredSize) {

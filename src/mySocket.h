@@ -16,7 +16,8 @@
 #include <string>
 #include <random>
 #include <sstream>
-
+#include "encryption.h"
+#include <sstream>
 // a custom simple socket class to consolidate the socket code
 // heavily inspired by Beej's Guide to Network Programming
 class MySocket {
@@ -267,7 +268,7 @@ public:
     std::string recv(int timeout_sec = 5) {
         if (enableLogging)
             std::cerr << "Socket " << socketNameForDebug << " receiving" << std::endl;
-        char buf[1024];
+        char buf[4096];
         fd_set readfds;
         FD_ZERO(&readfds);
         FD_SET(sockfd, &readfds);
@@ -308,6 +309,82 @@ public:
         if (enableLogging)
             std::cerr << "OK Received: " << buf << std::endl;
         return buf;
+    }
+
+    bool sendEncrypted(EVP_PKEY *publicKey, const std::string &message) {
+        std::string output = "------ ENCRYPTED ------\r\n";
+        for (int i = 0; i < message.size(); i += 202) {
+            output += encryptMessage(publicKey, message.substr(i, 202)) + "\r\n";
+        }
+        output += "------ END ------\r\n";
+
+        return send(output);
+    }
+
+    std::string recvEncrypted(EVP_PKEY *privateKey, bool *encrypted = nullptr) {
+        std::string raw = recv(5);
+        // print the raw message with \r \n and other special characters printed out
+        if (enableLogging) {
+            std::cerr << "Raw message: ";
+            for (char c : raw) {
+                if (c == '\r')
+                    std::cerr << "\\r";
+                else if (c == '\n')
+                    std::cerr << "\\n";
+                else
+                    std::cerr << c;
+            }
+            std::cerr << std::endl;
+        }
+
+        if (raw.empty())
+            return raw;
+        if (raw.substr(0, 23) != "------ ENCRYPTED ------") {
+            std::cerr << "Header not encrypted" << std::endl;
+            if (encrypted)
+                *encrypted = false;
+            return raw;
+        }
+        std::stringstream ss(raw);
+        std::string line;
+        std::string message;
+        bool reading = false;
+        while (std::getline(ss, line, '\r')) {
+            if (line.empty())
+                continue;
+            if (line[0] == '\n')
+                line = line.substr(1);
+            if (line == "------ ENCRYPTED ------") {
+                reading = true;
+                continue;
+            }
+            if (line == "------ END ------") {
+                reading = false;
+                break;
+            }
+            if (reading) {
+                std::string decrypted = decryptMessage(privateKey, line);
+                if (decrypted.empty()) {
+                    if (encrypted)
+                        *encrypted = false;
+                    error_t = "Failed to decrypt message";
+                    return raw;
+                }
+                message += decrypted;
+            }
+        }
+        if (reading) {
+            if (encrypted)
+                *encrypted = false;
+            error_t = "Invalid encrypted message format";
+            return raw;
+        }
+        if (encrypted)
+            *encrypted = true;
+
+        std::cerr << "Decrypted message: " << message << std::endl;
+
+        return message;
     }
 
     // close the active TCP connection. This is also called when the MySocket object is destroyed

@@ -85,9 +85,10 @@ public:
 
         userStatusGrid.attach(serverDetailsButton, 3, 1, 1, 1);
         serverDetailsButton.set_label("Details");
-        serverDetailsButton.set_sensitive(false);
         serverDetailsButton.signal_clicked().connect([this]() {
-            // clientAction.fetchServerInfo();
+            MessageDialog dialog(*this, "Server details", false, MessageType::MESSAGE_INFO, ButtonsType::BUTTONS_OK, true);
+            dialog.set_secondary_text("Server address: " + clientAction.serverAddress + "\nPort: " + clientAction.port + "\nPublic key: \n" + keyToString(clientAction.serverPublicKey, false) + "\nLast error: \n" + clientAction.error_t);
+            dialog.run();
         });
 
         userStatusGrid.attach(logOutButton, 4, 1, 1, 1);
@@ -246,8 +247,16 @@ public:
 
             Button *detailsButton = manage(new Button("Details"));
             detailsButton->get_style_context()->add_class("wide-button");
-            detailsButton->set_sensitive(false);
             onlineUsersGrid.attach(*detailsButton, 5, (onlineUsersGrid.get_children().size() + 1) / 4, 1, 1);
+
+            detailsButton->signal_clicked().connect([this, user]() {
+                clientAction.clientSocket.sendEncrypted(clientAction.serverPublicKey, "PKEY#" + user.username);
+                std::string response = clientAction.clientSocket.recvEncrypted(clientAction.clientPrivateKey);
+
+                MessageDialog dialog(*this, "User details", false, MessageType::MESSAGE_INFO, ButtonsType::BUTTONS_OK, true);
+                dialog.set_secondary_text("IP: " + user.ipAddr + "\nPort: " + user.p2pPort + "\nPublic key: \n" + response);
+                dialog.run();
+            });
         }
 
         if (filteredUsers.size() != clientAction.userAccounts.size()) {
