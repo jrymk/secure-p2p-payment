@@ -45,7 +45,7 @@ public:
     std::thread listeningThread;
     std::atomic<bool> p2pListening;
 
-    ClientAction() : clientSocket("client", true), p2pListenSocket("p2pListen") {
+    ClientAction() : clientSocket("client", true), p2pListenSocket("p2pListen", false) {
         checkKeyFiles();
         clientPrivateKey = stringToKey(loadKeyFromFile(PRIVATE_KEY_FILE), true);
     }

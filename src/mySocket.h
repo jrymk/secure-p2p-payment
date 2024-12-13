@@ -255,7 +255,7 @@ public:
     // send a message with the socket
     bool send(const std::string &message) {
         if (enableLogging)
-            std::cerr << "Socket " << socketNameForDebug << " sending: " << message << std::endl;
+            std::cerr << "\033[32mSocket " << socketNameForDebug << " sending: " << message << "\033[0m" << std::endl;
         int sendRes = ::send(sockfd, message.c_str(), message.size(), 0);
         if (sendRes == -1) {
             error_t = strerror(errno);
@@ -307,7 +307,7 @@ public:
 
         buf[numbytes] = '\0';
         if (enableLogging)
-            std::cerr << "OK Received: " << buf << std::endl;
+            std::cerr << "\033[34mSocket " << socketNameForDebug << " received: " << buf << "\033[0m" << std::endl;
         return buf;
     }
 
@@ -323,19 +323,19 @@ public:
 
     std::string recvEncrypted(EVP_PKEY *privateKey, bool *encrypted = nullptr) {
         std::string raw = recv(5);
-        // print the raw message with \r \n and other special characters printed out
-        if (enableLogging) {
-            std::cerr << "Raw message: ";
-            for (char c : raw) {
-                if (c == '\r')
-                    std::cerr << "\\r";
-                else if (c == '\n')
-                    std::cerr << "\\n";
-                else
-                    std::cerr << c;
-            }
-            std::cerr << std::endl;
-        }
+
+        // if (enableLogging) {
+        //     std::cerr << "Raw message: ";
+        //     for (char c : raw) {
+        //         if (c == '\r')
+        //             std::cerr << "\\r";
+        //         else if (c == '\n')
+        //             std::cerr << "\\n";
+        //         else
+        //             std::cerr << c;
+        //     }
+        //     std::cerr << std::endl;
+        // }
 
         if (raw.empty())
             return raw;

@@ -351,7 +351,7 @@ public:
                 payee->balance += std::stoi(parts[1]);
 
                 // send confirmation to payer
-                payerOnline->clientSocket->send("Transfer OK!\r\n");
+                payerOnline->clientSocket->sendEncrypted(stringToKey(payerOnline->publicKey, false), "Transfer OK!\r\n");
             } else {
                 error_t = "Invalid message format";
                 std::cerr << "\033[31mClient " << ipAndPort.first << ":" << ipAndPort.second << " sent an invalid message: " << message << "\033[0m" << std::endl;
